@@ -1,0 +1,127 @@
+---
+# Playbook to install/configure Mattermost on Centos 7.x
+- hosts: '{{ target }}'
+
+  tasks:
+    - name: "Make sure that necessary set of common tools is installed"
+      yum: state=present name={{ item }}
+      with_items:
+      - git
+      - vim
+      - mc
+      - ntpdate
+      - python-psycopg2 # for ansible to be able to manage pg database
+      - libselinux-python
+      - net-tools # netstat
+
+    - name: "Set selinux to permissive"
+      selinux: policy=targeted state=permissive 
+
+    - name: Ensure the PostgreSQL service is installed
+      yum: name=postgresql-server state=present
+
+    - name: Ensure the PostgreSQL database engine is initialized
+      action: shell postgresql-setup initdb
+      ignore_errors: yes
+      notify:
+      - restart PostgreSQL
+
+    - name: Ensure the PostgreSQL service is running 
+      service: name=postgresql state=started enabled=yes
+
+    # This one is very crude
+    # TODO: change, so that only one line related to specific database would be changed
+    - name: Configure postgres authentication
+      template: 
+        src=templates/pgsql/pg_hba.conf
+        dest=/var/lib/pgsql/data/pg_hba.conf
+        owner=postgres
+        group=postgres
+        mode=0600
+      notify:
+      - restart PostgreSQL
+
+    - name: ensure Mattermost database is created
+      sudo: yes
+      sudo_user: postgres
+      postgresql_db: name=mattermost
+
+    - name: "Configure pgsql user"
+      sudo: yes
+      sudo_user: postgres
+      postgresql_user: db=mattermost name=mmuser password=mmuser_password 
+
+    - name: "Mattermost package exist"
+      stat: path=/tmp/mattermost.tar.gz
+      register: stat_mattermost_package
+
+    - name: "Mattermost binary exist"
+      stat: path=/opt/mattermost/bin/platform
+      register: stat_mattermost_binary
+
+    - name: "Get Mattermost"
+      get_url: 
+        url=https://github.com/mattermost/platform/releases/download/v2.0.0/mattermost.tar.gz
+        dest=/tmp/mattermost.tar.gz
+        mode=0440
+      when: stat_mattermost_package.stat.exists == False and stat_mattermost_binary.stat.exists == False
+
+    - name: "Unpack mattermost"
+      unarchive: 
+        src=/tmp/mattermost.tar.gz dest=/opt
+        copy=no
+      when: stat_mattermost_binary.stat.exists == False
+
+    - name: "Ensure mattermost group exists"
+      group: name=mattermost
+
+    - name: "Ensure mattermost user exists"
+      user: name=mattermost group=mattermost
+
+    - name: "Ensure that mattermost datadir exist and has correct owner"
+      file: path=/opt/mattermost/data state=directory owner=mattermost group=mattermost
+
+    - name: Set correct ownership on all mattermost files
+      file: dest=/opt/mattermost state=directory
+            owner=mattermost group=mattermost
+            recurse=yes
+      sudo: yes
+
+    - name: "Alter mattermost configuration: /opt/mattermost/config/config.json"
+      lineinfile:
+        dest: "/opt/mattermost/config/config.json"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { regexp: '^        "DataSource"', line: '        "DataSource": "postgres://mmuser:mmuser_password@127.0.0.1:5432/mattermost?sslmode=disable&connect_timeout=10",' }
+        # there is an issue with this when the line is added at the end of file if drivername: "mysql" is not found
+        - { regexp: '^        "DriverName": "mysql",', line: '        "DriverName": "postgres",' }
+        - { regexp: '^        "SendEmailNotifications": false,', line: '        "SendEmailNotifications": true,' }
+        - { regexp: '^        "SMTPServer":', line: '        "SMTPServer": "localhost",' }
+        - { regexp: '^        "SMTPPort":', line: '        "SMTPPort": "25",' }
+
+      notify:
+      - restart Mattermost
+      tags: test
+
+    - name: "Configure mattermost systemd unit"
+      template: 
+        src=templates/mattermost/mattermost.service
+        dest=/etc/systemd/system/mattermost.service
+      notify:
+      - reload systemd
+
+    - name: Ensure Mattermost service is enabled and running 
+      service: name=mattermost state=started enabled=yes      
+
+
+  handlers:
+    - name: restart PostgreSQL
+      action: service name=postgresql state=restarted
+
+    - name: restart Mattermost
+      action: service name=mattermost state=restarted
+
+    - name: reload systemd
+      sudo: yes
+      command: systemctl daemon-reload

@@ -1,0 +1,9 @@
+---
+# Playbook to install/configure docker on Centos 7.x
+- hosts: docker.home
+  tasks:
+    - name: "Install docker packages"
+      yum: name=docker state=present
+
+    - name: Start Docker service
+      service: name=docker state=started      

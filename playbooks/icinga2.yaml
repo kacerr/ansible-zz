@@ -1,0 +1,54 @@
+---
+# Playbook to install/configure Mattermost on Centos 7.x
+- hosts: '{{ target }}'
+
+  tasks:
+    - name: "Make sure that necessary set of common tools is installed"
+      yum: state=present name={{ item }}
+      with_items:
+      #- git
+      - vim
+      - mc
+      - ntpdate
+      #- python-psycopg2 # for ansible to be able to manage pg database
+      #- libselinux-python
+      - net-tools # netstat
+
+    - name: Get Icinga repo configuration
+      get_url: 
+        url=http://packages.icinga.org/epel/ICINGA-release.repo
+        dest=/etc/yum.repos.d/ICINGA-release.repo
+        mode=0440
+
+    - name: Import Icinga repo GPG key.
+      rpm_key:
+        key: "http://packages.icinga.org/icinga.key"
+        state: present        
+
+    # we would like to use more up-to-date versions of PHP than what we have in Centos base repos
+    - name: Install remi repo.
+      yum:
+        name: "{{ remi_repo_url }}"
+        state: present
+
+    - name: Import remi GPG key.
+      rpm_key:
+        key: "{{ remi_repo_gpg_key_url }}"
+        state: present        
+
+
+    - name: install
+      yum:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - php56-php-imagick
+        - php56-php-intl
+        - php56-php-gd
+        - php56-php-mysql
+        - php56-php-pgsql
+        - icingaweb2
+        - icinga2
+        - mysql-client
+        - python-mysqldb
+        - icinga2-ido-mysql
