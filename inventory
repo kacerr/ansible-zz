@@ -1,7 +1,0 @@
-[targets]
-docker.zlutazimnice.cz ansible_ssh_port=32026 ansible_user=novakj
-docker.home
-icinga2.local ansible_ssh_port=2230 ansible_ssh_host=127.0.0.1 ansible_user=vagrant
-
-
-
