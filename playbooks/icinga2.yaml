@@ -3,6 +3,9 @@
 - hosts: '{{ target }}'
 
   tasks:
+    - name: "Set selinux to permissive"
+      selinux: policy=targeted state=permissive 
+
     - name: "Make sure that necessary set of common tools is installed"
       yum: state=present name={{ item }}
       with_items:
@@ -11,8 +14,10 @@
       - mc
       - ntpdate
       #- python-psycopg2 # for ansible to be able to manage pg database
+      - MySQL-python # to manage mysql database
       #- libselinux-python
       - net-tools # netstat
+      - mailx 
 
     - name: Get Icinga repo configuration
       get_url: 
@@ -36,8 +41,7 @@
         key: "{{ remi_repo_gpg_key_url }}"
         state: present        
 
-
-    - name: install
+    - name: install icinga2 and related packages
       yum:
         name: "{{ item }}"
         update_cache: yes
@@ -49,6 +53,102 @@
         - php56-php-pgsql
         - icingaweb2
         - icinga2
-        - mysql-client
-        - python-mysqldb
+        - icingacli
         - icinga2-ido-mysql
+        - nagios-plugins-all
+        # icinga classic UI
+        - icinga2-classicui-config 
+        - icinga-gui        
+
+    - name: Ensure Icinga2 service is enabled and running 
+      service: name=icinga2 state=started enabled=yes      
+
+    - name: install maria and related packages
+      yum: 
+        name: mariadb-server
+
+    - name: Ensure MariaDB service is enabled and running 
+      service: name=mariadb state=started enabled=yes
+
+    - name: Create icinga2 mysql database
+      mysql_db: name=icinga2 state=present
+      register: icinga2_create_db
+
+    - name: Initialize icinga2 mysql database
+      mysql_db: name=icinga2 state=import target=/usr/share/icinga2-ido-mysql/schema/mysql.sql
+      when: icinga2_create_db.changed
+
+    - name: Configure Icinga2 Ido Mysql Feature
+      template: src=icinga2/ido-mysql.conf.j2
+                dest=/etc/icinga2/features-available/ido-mysql.conf
+                backup=yes
+                owner=icinga
+                group=icinga
+                mode=0640
+
+    - name: Enable Icinga2 Ido Mysql Feature
+      command: "icinga2 feature enable ido-mysql"
+      register: features_result
+      changed_when: "'for these changes to take effect' in features_result.stdout"
+      notify:
+       - restart icinga2      
+
+   # Webserver and web interface
+    - name: "Install apache"
+      yum: name=httpd state=present
+
+    - name: Ensure the httpd service is running 
+      service: name=httpd state=started enabled=yes
+
+    - name: PHP config timezone
+      action: ini_file dest=/etc/php.d/timezone.ini section=Date option=date.timezone value=Europe/Prague mode=0600
+      notify:
+      - restart apache
+
+   # This does not look very well, but for now get it reaady for manual icingaweb configuration
+    - name: Create icinga2 mysql database
+      mysql_db: name=icingaweb2 state=present
+      register: icingaweb2_create_db
+
+    - name: Create icinga2 mysql user
+      mysql_user: name={{ icinga_database_user }} password={{ icinga_database_password }} state=present priv="icingaweb2.*:ALL/{{ icinga_database_name }}.*:ALL"
+
+    - name: Create icinga2 mysql user (@localhost)
+      mysql_user: name={{ icinga_database_user }} host=localhost password={{ icinga_database_password }} state=present priv="icingaweb2.*:ALL/{{ icinga_database_name }}.*:ALL"
+
+    - name: Create icinga2 mysql user (@localhost)
+      mysql_user: name={{ icinga_database_user }} host=any password={{ icinga_database_password }} state=present priv="icingaweb2.*:ALL/{{ icinga_database_name }}.*:ALL"
+
+    - name: check file /etc/icingaweb2/setup.token
+      tags:
+        - read-token
+      stat:
+        path: /etc/icingaweb2/setup.token
+      register: icinga2_web_token_st
+
+    - name: getting token (create)
+      command: icingacli setup token create
+      register: icingaweb2_web_token_create
+      when: icinga2_web_token_st.stat.exists == False
+
+    - name: getting token (read)
+      tags: read-token
+      command: icingacli setup token show
+      register: icingaweb2_web_token_read
+      when: icinga2_web_token_st.stat.exists == True
+
+    - debug:
+        msg: "Now go at http://{{ ansible_default_ipv4.address }}/icingaweb2/setup to continue the installation using token: {{ icingaweb2_web_token_create.stdout.split()[-1:] }}"
+      when: icinga2_web_token_st.stat.exists == False
+
+    - tags: read-token
+      debug:
+        msg: "Now go at http://{{ ansible_default_ipv4.address }}/icingaweb2/setup to continue the installation using token: {{ icingaweb2_web_token_read.stdout.split()[-1:] }}"
+      when: icinga2_web_token_st.stat.exists == True
+
+    # htpasswd for icinga classic is created manualy
+    # htpasswd -b /etc/icinga/passwd kacerr password
+
+  handlers:
+    - name: restart apache
+      action: service name=httpd state=restarted
