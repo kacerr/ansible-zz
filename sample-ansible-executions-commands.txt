@@ -1,0 +1,5 @@
+ ansible-playbook -c ssh playbooks/icinga2.yaml --start-at-task="Configure Grafana repo" --extra-vars="target=icinga2.home.home"
+ ansible-playbook -c ssh playbooks/icinga2.yaml --start-at-task="Configure Grafana repo" --extra-vars="target=icinga2.home.home" --private-key=~/.ssh/id_rsa -k
+
+
+  ansible-playbook -c ssh playbooks/docker.yaml --extra-vars="target=saint.zlutazimnice.cz" --private-key=~/.ssh/id_rsa -k

@@ -1,0 +1,6 @@
+---
+- hosts: '{{ target }}'
+  become: true
+  tasks:
+  - name: Dump all vars
+    action: template src=templates/tools/dump_all_variables.j2 dest=/tmp/ansible-variables-dump.all
