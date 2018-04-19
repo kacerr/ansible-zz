@@ -1,0 +1,76 @@
+# ansible-playbook playbooks/prometheus.yaml --extra-vars="target=docker.zlutazimnice.cz" --ask-become-pass --ask-pass -vvv
+---
+- hosts: '{{ target }}'
+  become: true
+  tasks:
+    - name: create directory for prometheus run configure
+      file: path=/srv/prometheus state=directory
+
+    - name: create etc directory for prometheus run configure
+      file: path=/srv/prometheus/etc state=directory
+
+    - name: prepare docker run file
+      template: src=prometheus/run.sh
+                dest=/srv/prometheus/run.sh
+                mode=0755
+
+    - name: prometheus config file
+      template: src=prometheus/etc/prometheus.yml
+                dest=/srv/prometheus/etc/prometheus.yml
+                mode=0755
+
+    - name: alerting rules
+      template: src=prometheus/etc/services.rules
+                dest=/srv/prometheus/etc/services.rules
+                mode=0755
+
+    - name: run prometheus container
+      shell: /srv/prometheus/run.sh
+      #when: prometheus_restart_container|bool == true
+
+    ### blackbox exporter
+    #- name: create etc directory for prometheus run configure
+    #  file: path=/srv/prometheus-blackbox-exporter/config state=directory
+
+    #- name: prepare docker run file
+    #  template: src=blackbox/run.sh
+    #            dest=/srv/prometheus-blackbox-exporter/run.sh
+    #            mode=0755
+
+    #- name: blackbox exporter config file
+    #  template: src=blackbox/blackbox.yml
+    #            dest=/srv/prometheus-blackbox-exporter/config/blackbox.yml
+    #            mode=0755
+
+    #- name: run prometheus blackbox exporter container
+    #  shell: /srv/prometheus-blackbox-exporter/run.sh
+
+    ### grafana
+    - name: create directory for grafana run configure
+      file: path=/srv/grafana state=directory
+
+    - name: prepare docker run file
+      template: src=grafana/run.sh
+                dest=/srv/grafana/run.sh
+                mode=0755
+
+    - name: run grafana blackbox exporter container
+      shell: /srv/grafana/run.sh
+
+    ### alert manager
+    - name: create directories for alert manager volume mounts
+      file: path=/srv/alertmanager/tmp/prom state=directory
+
+    - name: alert manager config file
+      template: src=alert_manager/alertmanager.yml
+                dest=/srv/alertmanager/alertmanager.yml
+                mode=0755
+
+    - name: prepare docker run file
+      template: src=alert_manager/run.sh
+                dest=/srv/alertmanager/run.sh
+                mode=0755
+
+    - name: run alert manager container
+      shell: /srv/alertmanager/run.sh
+

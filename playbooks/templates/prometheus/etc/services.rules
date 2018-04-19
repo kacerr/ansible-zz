@@ -1,0 +1,18 @@
+{% raw %}
+ALERT ProbeFailing
+  IF probe_success < 1
+  FOR 3m
+  ANNOTATIONS {
+    summary = "probe {{$labels.job}} failing",
+    description = "probe {{$labels.job}} failing"
+  }
+
+ALERT LowDiskSpace
+  IF 100 *(1 - (node_filesystem_free{ mountpoint="/rootfs"}  / node_filesystem_size{ mountpoint="/rootfs"}) ) > 75
+  FOR 3m
+  ANNOTATIONS {
+    SUMMARY = "{{$labels.instance}}: Low root disk space",
+    DESCRIPTION = "{{$labels.instance}}: Root disk usage is above 75% (current value is: {{ $value }})"
+  }
+
+{% endraw %}

@@ -1,0 +1,12 @@
+# ansible-playbook playbooks/metrics_collectors.yaml --extra-vars="target=docker.zlutazimnice.cz" --ask-become-pass --ask-pass -vvv
+# ansible-playbook playbooks/metrics_collectors.yaml --extra-vars="target=saint.zlutazimnice.cz" --ask-become-pass --ask-pass -vvv
+- hosts: '{{ target }}'
+  become: true
+  tasks:
+    - name: Node exporter container
+      block:
+        - file: path=/srv/tools/node-exporter state=directory
+        - template: src=prometheus/run-node-exporter.sh
+                  dest=/srv/tools/node-exporter/run.sh
+                  mode=0755      
+        - shell: /srv/tools/node-exporter/run.sh

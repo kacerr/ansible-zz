@@ -1,3 +1,4 @@
 inventory
 secrets.yaml
 playbooks/tmp/
+*.retry

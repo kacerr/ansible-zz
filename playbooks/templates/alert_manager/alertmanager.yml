@@ -1,0 +1,18 @@
+{% raw %}
+global:
+  smtp_smarthost: 172.17.0.1:25
+  smtp_from: alertmanager@docker.zlutazimnice.cz
+  smtp_require_tls: false
+
+route:
+  receiver: 'email'
+
+receivers:
+    - name: 'email'
+      email_configs:
+          - send_resolved: true
+            text: "{{ .CommonAnnotations.description }}"
+            from: 'alertmanager@docker.zlutazimnice.cz'
+            to: 'kacerr.cz@gmail.com'
+
+{% endraw %}
